@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: apacheflink
+
+server:
+  port: 9899
