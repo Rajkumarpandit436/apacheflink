@@ -32,9 +32,6 @@ build/
 ### VS Code ###
 .vscode/
 
-.mvn/
-mvnw
-mvnw.cmd
 terraform/.terraform.lock.hcl
 terraform/.terraform/
 terraform/terraform.tfstate
