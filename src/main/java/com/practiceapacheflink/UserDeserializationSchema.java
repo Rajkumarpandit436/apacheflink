@@ -20,7 +20,7 @@ public class UserDeserializationSchema implements DeserializationSchema<User> {
 
         config.put(
                 "schema.registry.url",
-                "http://localhost:8081"
+                "http://schema-registry:8081"
         );
 
         config.put(
@@ -30,7 +30,7 @@ public class UserDeserializationSchema implements DeserializationSchema<User> {
 
         SchemaRegistryClient schemaRegistryClient =
                 new CachedSchemaRegistryClient(
-                        "http://localhost:8081",
+                        "http://schema-registry:8081",
                         100
                 );
 
@@ -43,7 +43,7 @@ public class UserDeserializationSchema implements DeserializationSchema<User> {
     @Override
     public User deserialize(byte[] message) throws IOException {
         return (User) deserializer.deserialize(
-                "flink-input",
+                "flink-avro-input",
                 message
         );
     }
