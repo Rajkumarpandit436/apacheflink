@@ -6,9 +6,7 @@ import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsIni
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootApplication
 public class ApacheflinkApplication {
 
 	public static void main(String[] args) throws Exception {
@@ -18,7 +16,7 @@ public class ApacheflinkApplication {
 		env.getCheckpointConfig().setCheckpointStorage("file:///tmp/flink-checkpoints");
 
 		KafkaSource<User> source = KafkaSource.<User>builder()
-				.setBootstrapServers("localhost:9092")
+				.setBootstrapServers("kafka:9092")
 				.setTopics("flink-avro-input")
 				.setGroupId("flink-user-consumer")
 				.setStartingOffsets(OffsetsInitializer.committedOffsets(OffsetResetStrategy.EARLIEST))
