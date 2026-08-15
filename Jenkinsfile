@@ -6,6 +6,8 @@ pipeline {
         FLINK_JOBMANAGER = "flink-jobmanager"
         FLINK_JAR_PATH = "/opt/flink/usrlib/apacheflink-0.0.1-SNAPSHOT.jar"
         FLINK_REST_URL = "http://localhost:8082"
+        // EXACT SAME name rakhein jo Java code ke env.execute("...") me hai
+        TARGET_JOB_NAME = "Flink Job"
     }
 
     stages {
@@ -34,7 +36,7 @@ pipeline {
                     ).trim()
 
                     if (!env.JAR_FILE) {
-                        error("No application JAR found")
+                        error("No application JAR found in target/")
                     }
 
                     echo "Application JAR: ${env.JAR_FILE}"
@@ -45,65 +47,66 @@ pipeline {
         stage('Copy JAR to Flink') {
             steps {
                 sh '''
-                    docker exec ${FLINK_JOBMANAGER} \
-                        mkdir -p /opt/flink/usrlib
-
-                    docker cp "${JAR_FILE}" \
-                        ${FLINK_JOBMANAGER}:${FLINK_JAR_PATH}
+                    docker exec ${FLINK_JOBMANAGER} mkdir -p /opt/flink/usrlib
+                    docker cp "${JAR_FILE}" ${FLINK_JOBMANAGER}:${FLINK_JAR_PATH}
                 '''
             }
         }
 
-        stage('Stop Previous Flink Job') {
+        stage('Stop ALL Previous Flink Instances') {
             steps {
                 script {
-
-                    def jobId = sh(
-                        script: '''
-                            curl -s ${FLINK_REST_URL}/jobs/overview |
-                            python3 -c "
-import sys,json
-data=json.load(sys.stdin)
-jobs=data.get('jobs',[])
-for job in jobs:
-    if job.get('name') == 'Flink Job' and job.get('state') in ['RUNNING','CREATED','INITIALIZING','RECONCILING','DEPLOYING']:
-        print(job['jid'])
-        break
+                    // Sabhi running instances ki IDs extract karein
+                    def jobIds = sh(
+                        script: """
+                            curl -s ${FLINK_REST_URL}/jobs/overview | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+target_name = '${env.TARGET_JOB_NAME}'
+job_ids = []
+for job in data.get('jobs', []):
+    if job.get('name') == target_name and job.get('state') in ['RUNNING', 'CREATED', 'INITIALIZING', 'RECONCILING', 'DEPLOYING']:
+        job_ids.append(job['jid'])
+print(' '.join(job_ids))
 "
-                        ''',
+                        """,
                         returnStdout: true
                     ).trim()
 
-                    if (jobId) {
-                        echo "Previous Flink Job found: ${jobId}"
+                    if (jobIds) {
+                        echo "Found running job instance(s): ${jobIds}"
 
+                        // Har running instance ko cancel karein
                         sh """
-                            curl -s -X PATCH \
-                                ${FLINK_REST_URL}/jobs/${jobId}?mode=cancel
+                            for JID in ${jobIds}; do
+                                echo "Canceling Job ID: \$JID"
+                                curl -s -X PATCH "${FLINK_REST_URL}/jobs/\$JID?mode=cancel"
+                            done
                         """
 
-                        echo "Waiting for previous job to stop..."
+                        echo "Waiting for all previous instances to terminate..."
 
+                        // Wait until no job is in RUNNING state
                         sh """
                             for i in \$(seq 1 30); do
+                                ACTIVE_COUNT=\$(curl -s ${FLINK_REST_URL}/jobs/overview | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+target_name = '${env.TARGET_JOB_NAME}'
+active = [j for j in data.get('jobs', []) if j.get('name') == target_name and j.get('state') in ['RUNNING', 'INITIALIZING', 'RECONCILING', 'DEPLOYING']]
+print(len(active))
+")
+                                echo "Active instances remaining: \$ACTIVE_COUNT"
 
-                                STATE=\$(curl -s \
-                                    ${FLINK_REST_URL}/jobs/${jobId} |
-                                    python3 -c "import sys,json; print(json.load(sys.stdin).get('state',''))")
-
-                                echo "Previous job state: \$STATE"
-
-                                if [ "\$STATE" = "CANCELED" ] || \
-                                   [ "\$STATE" = "FAILED" ] || \
-                                   [ "\$STATE" = "FINISHED" ]; then
+                                if [ "\$ACTIVE_COUNT" -eq "0" ]; then
+                                    echo "All previous instances stopped successfully."
                                     break
                                 fi
-
                                 sleep 2
                             done
                         """
                     } else {
-                        echo "No previous Flink Job found."
+                        echo "No active instance of '${env.TARGET_JOB_NAME}' found."
                     }
                 }
             }
@@ -118,38 +121,35 @@ for job in jobs:
             }
         }
 
-        stage('Verify Deployment') {
+        stage('Verify Single Deployment') {
             steps {
                 script {
-
                     sh '''
-                        echo "Waiting for Flink job..."
+                        echo "Verifying new Flink job execution..."
 
                         for i in $(seq 1 30); do
-
                             RESPONSE=$(curl -s ${FLINK_REST_URL}/jobs/overview)
 
-                            echo "$RESPONSE"
-
-                            RUNNING=$(echo "$RESPONSE" | python3 -c "
-import sys,json
-data=json.load(sys.stdin)
-print(any(
-    job.get('name') == 'Flink Job' and
-    job.get('state') == 'RUNNING'
-    for job in data.get('jobs',[])
-))
+                            RUNNING_COUNT=$(echo "$RESPONSE" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+target_name = '${TARGET_JOB_NAME}'
+running = [j for j in data.get('jobs', []) if j.get('name') == target_name and j.get('state') == 'RUNNING']
+print(len(running))
 ")
 
-                            if [ "$RUNNING" = "True" ]; then
-                                echo "Flink Job is RUNNING"
+                            if [ "$RUNNING_COUNT" -eq "1" ]; then
+                                echo "SUCCESS: Exactly 1 instance of '${TARGET_JOB_NAME}' is RUNNING."
                                 exit 0
+                            elif [ "$RUNNING_COUNT" -gt "1" ]; then
+                                echo "ERROR: Multiple instances detected ($RUNNING_COUNT)!"
+                                exit 1
                             fi
 
                             sleep 2
                         done
 
-                        echo "Flink Job did not reach RUNNING state"
+                        echo "ERROR: Flink Job failed to reach RUNNING state within timeout."
                         exit 1
                     '''
                 }
@@ -158,11 +158,9 @@ print(any(
     }
 
     post {
-
         success {
             echo 'Flink deployment successful!'
         }
-
         failure {
             echo 'Flink deployment failed!'
         }

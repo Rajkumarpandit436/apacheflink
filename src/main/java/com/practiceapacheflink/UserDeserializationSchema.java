@@ -4,12 +4,14 @@ package com.practiceapacheflink;
 import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 
 import java.io.IOException;
 import java.util.HashMap;
 
+@Slf4j
 public class UserDeserializationSchema implements DeserializationSchema<User> {
 
     private transient KafkaAvroDeserializer deserializer;
@@ -42,6 +44,9 @@ public class UserDeserializationSchema implements DeserializationSchema<User> {
 
     @Override
     public User deserialize(byte[] message) throws IOException {
+
+        log.info("Raw message length received: {}", message != null ? message.length : 0);
+
         return (User) deserializer.deserialize(
                 "flink-avro-input",
                 message
