@@ -10,7 +10,6 @@ public class UserDBSinkWriter implements SinkWriter<User> {
 
     @Override
     public void write(User element, Context context) throws IOException, InterruptedException {
-        System.out.println(">>> SINK RECEIVED USER: " + element);
         log.info("Writing user to database: {} ", element);
     }
 

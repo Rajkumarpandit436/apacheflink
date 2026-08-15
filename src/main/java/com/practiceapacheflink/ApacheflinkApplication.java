@@ -20,8 +20,8 @@ public class ApacheflinkApplication {
 				.setBootstrapServers("kafka:29092")
 				.setTopics("flink-avro-input")
 				.setGroupId("flink-user-consumer-v2")
-				.setStartingOffsets(OffsetsInitializer.earliest())
-//				.setStartingOffsets(OffsetsInitializer.committedOffsets(OffsetResetStrategy.EARLIEST))
+//				.setStartingOffsets(OffsetsInitializer.earliest())
+				.setStartingOffsets(OffsetsInitializer.committedOffsets(OffsetResetStrategy.EARLIEST))
 				.setValueOnlyDeserializer(new UserDeserializationSchema())
 				.build();
 
@@ -30,8 +30,6 @@ public class ApacheflinkApplication {
 						source,
 						WatermarkStrategy.noWatermarks(),
 						"Kafka Source");
-
-		users.print("Kafka-Data");
 
 		users.sinkTo(
 				new UserDBSink()
